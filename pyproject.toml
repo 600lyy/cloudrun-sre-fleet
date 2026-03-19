@@ -1,0 +1,11 @@
+[project]
+name = "cloudrun-sre-fleet"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk>=1.27.2",
+    "google-cloud-monitoring>=2.29.1",
+    "google-cloud-run>=0.15.0",
+]
