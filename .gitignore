@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+
+# Sessions
+scheduler_agent/.adk/session.db

@@ -1,7 +1,7 @@
 from google.adk.agents import LlmAgent
 from ._prompts import LATENCY_EXPERT_SYSTEM_PROMPT
 
-from scheduler_agent.tools.cloud_monitoring import get_cloud_run_metrics
+from scheduler_agent.tools.cloud_monitoring import get_cloud_run_metrics, get_service_latency_report
 from scheduler_agent.tools.cloud_run import get_cloud_run_config, patch_cloud_run_config
 
 
@@ -15,10 +15,11 @@ class LatencyExpert(LlmAgent):
                 and avoiding cold starts are the top priorities.
             """,
             model="gemini-2.5-flash",
-            instruction=LATENCY_EXPERT_SYSTEM_PROMPT, # Imported from _prompts.py
+            instruction=LATENCY_EXPERT_SYSTEM_PROMPT,
             tools=[
                 get_cloud_run_config,
                 get_cloud_run_metrics,
                 patch_cloud_run_config,
+                get_service_latency_report,
             ]
         )
