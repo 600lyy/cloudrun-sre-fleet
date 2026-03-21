@@ -118,10 +118,10 @@ async def get_service_latency_report(service_name: str, project_id: str) -> dict
     url = f"https://monitoring.googleapis.com/v1/projects/{project_id}/location/global/prometheus/api/v1/query"
     headers = {"Authorization": f"Bearer {credentials.token}"}
 
-    async def fetch_metric(percentile: float):
+    async def fetch(metric_name: str, percentile: float):
         promql = (
             f"histogram_quantile({percentile}, sum by (le) ("
-            f"increase(run_googleapis_com:request_latency_e2e_latencies_bucket{{"
+            f"increase({metric_name}{{"
             f"monitored_resource='cloud_run_revision', "
             f"service_name='{service_name}'}}[5m])))"
         )
@@ -135,16 +135,31 @@ async def get_service_latency_report(service_name: str, project_id: str) -> dict
             except Exception as e:
                 return f"Error: {str(e)}"
 
-    # 2. Run p50 and p99 concurrently
-    p50_task = fetch_metric(0.50)
-    p99_task = fetch_metric(0.99)
+    # Parallel Execution of fetching metrics
+    tasks = [
+        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.50),
+        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.90),
+        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.99),
+        fetch("run_googleapis_com:request_latency_ingress_to_region_bucket", 0.50),
+        fetch("run_googleapis_com:request_latency_pending_bucket", 0.50),
+        fetch("run_googleapis_com:request_latency_routing_bucket", 0.50),
+        fetch("run_googleapis_com:request_latency_user_execution_bucket", 0.50),
+        fetch("run_googleapis_com:request_latency_response_egress_bucket", 0.50),
+        fetch("run_googleapis_com:container_max_request_concurrencies_bucket", 0.50),
+    ]
     
-    p50_val, p99_val = await asyncio.gather(p50_task, p99_task, return_exceptions=True)
+    report_data = await asyncio.gather(*tasks, return_exceptions=True)
 
     return {
         "service": service_name,
         "project": project_id,
-        "p50_latency_sec": p50_val,
-        "p99_latency_sec": p99_val,
-        "unit": "seconds"
+        "p50_latency_ms": report_data[0],
+        "p95_latency_ms": report_data[1],
+        "p99_latency_ms": report_data[2],
+        "ingress_latecny_ms": report_data[3],
+        "pending_latency_ms": report_data[4],
+        "routing_latency_ms": report_data[5],
+        "user_execution_latency_ms": report_data[6],
+        "egress_latency_ms": report_data[7],
+        "unit": "millionseconds"
     }
