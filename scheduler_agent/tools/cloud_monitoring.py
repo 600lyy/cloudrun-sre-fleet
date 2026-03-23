@@ -7,6 +7,7 @@ import httpx
 import google.auth
 import google.auth.transport.requests
 from google.cloud import monitoring_v3
+from google.cloud.monitoring_v3 import MetricServiceAsyncClient, TimeInterval, Aggregation, QueryServiceAsyncClient, QueryTimeSeriesRequest
 from google.api_core import exceptions
 
 
@@ -107,9 +108,9 @@ async def get_cloud_run_metrics(service_name: str, project_id: str = None, end_t
 
 async def get_service_latency_report(service_name: str, project_id: str, end_timestamp: int = None) -> dict:
     """
-    Fetches p50 and p99 latency for a Cloud Run service in parallel.
-    Also fetches 1-week historical baselines to detect true latency spikes.
-    Optionally accepts an end_timestamp (Unix epoch) to investigate past incidents.
+    Fetches p50, p99 latency, and request rates for a Cloud Run service in parallel.
+    Also fetches 1-hour rolling historical baselines to detect short-term spikes 
+    and correlate them with traffic volume changes.
     Uses the native Prometheus HTTP API to bypass MQL parsing errors.
     """
     # 1. Auth: Get Bearer token for the specific project scope
@@ -122,14 +123,7 @@ async def get_service_latency_report(service_name: str, project_id: str, end_tim
     url = f"https://monitoring.googleapis.com/v1/projects/{project_id}/location/global/prometheus/api/v1/query"
     headers = {"Authorization": f"Bearer {credentials.token}"}
 
-    async def fetch(metric_name: str, percentile: float, offset: str = None):
-        offset_str = f" offset {offset}" if offset else ""
-        promql = (
-            f"histogram_quantile({percentile}, sum by (le) ("
-            f"increase({metric_name}{{"
-            f"monitored_resource='cloud_run_revision', "
-            f"service_name='{service_name}'}}[10m]{offset_str})))"
-        )
+    async def fetch_promql(promql: str):
         params = {"query": promql}
         if end_timestamp:
             params["time"] = end_timestamp
@@ -148,19 +142,37 @@ async def get_service_latency_report(service_name: str, project_id: str, end_tim
             except Exception as e:
                 return f"Error: {str(e)}"
 
+    # PromQL definitions for short-term baseline and traffic correlation
+    metric_latency = "run_googleapis_com:request_latency_e2e_latencies_bucket"
+    metric_requests = "run_googleapis_com:request_count"
+    
+    # Base filters
+    filter_str = f"monitored_resource='cloud_run_revision', service_name='{service_name}'"
+
     # Parallel Execution of fetching metrics
     tasks = [
-        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.50),
-        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.90),
-        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.99),
-        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.50, offset="1w"),
-        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.99, offset="1w"),
-        fetch("run_googleapis_com:request_latency_ingress_to_region_bucket", 0.50),
-        fetch("run_googleapis_com:request_latency_pending_bucket", 0.50),
-        fetch("run_googleapis_com:request_latency_routing_bucket", 0.50),
-        fetch("run_googleapis_com:request_latency_user_execution_bucket", 0.50),
-        fetch("run_googleapis_com:request_latency_response_egress_bucket", 0.50),
-        fetch("run_googleapis_com:container_max_request_concurrencies_bucket", 0.50),
+        # Current 5m p50 and p99 latency
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase({metric_latency}{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.95, sum by (le) (increase({metric_latency}{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.99, sum by (le) (increase({metric_latency}{{{filter_str}}}[5m])))"),
+        
+        # 1-Hour Rolling Average p50 and p99 latency (using avg_over_time of a 5m rate, calculated over 1h)
+        # Note: PromQL doesn't easily average quantiles directly. We calculate the quantile over a 1h window to represent the baseline.
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase({metric_latency}{{{filter_str}}}[1h])))"),
+        fetch_promql(f"histogram_quantile(0.99, sum by (le) (increase({metric_latency}{{{filter_str}}}[1h])))"),
+
+        # Current 5m Request Rate (requests per second)
+        fetch_promql(f"sum(rate({metric_requests}{{{filter_str}}}[5m]))"),
+        
+        # 1-Hour Rolling Request Rate (requests per second)
+        fetch_promql(f"sum(rate({metric_requests}{{{filter_str}}}[1h]))"),
+
+        # Detailed breakdown (current 5m)
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_ingress_to_region_bucket{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_pending_bucket{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_routing_bucket{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_user_execution_bucket{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_response_egress_bucket{{{filter_str}}}[5m])))"),
     ]
     
     report_data = await asyncio.gather(*tasks, return_exceptions=True)
@@ -172,12 +184,14 @@ async def get_service_latency_report(service_name: str, project_id: str, end_tim
         "p50_latency_ms": report_data[0],
         "p95_latency_ms": report_data[1],
         "p99_latency_ms": report_data[2],
-        "baseline_1w_p50_latency_ms": report_data[3],
-        "baseline_1w_p99_latency_ms": report_data[4],
-        "ingress_latency_ms": report_data[5],
-        "pending_latency_ms": report_data[6],
-        "routing_latency_ms": report_data[7],
-        "user_execution_latency_ms": report_data[8],
-        "egress_latency_ms": report_data[9],
+        "baseline_1h_p50_latency_ms": report_data[3],
+        "baseline_1h_p99_latency_ms": report_data[4],
+        "request_rate_rps": report_data[5],
+        "baseline_1h_request_rate_rps": report_data[6],
+        "ingress_latency_ms": report_data[7],
+        "pending_latency_ms": report_data[8],
+        "routing_latency_ms": report_data[9],
+        "user_execution_latency_ms": report_data[10],
+        "egress_latency_ms": report_data[11],
         "unit": "milliseconds"
     }
