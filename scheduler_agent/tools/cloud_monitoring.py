@@ -7,13 +7,14 @@ import httpx
 import google.auth
 import google.auth.transport.requests
 from google.cloud import monitoring_v3
-from google.cloud.monitoring_v3 import MetricServiceAsyncClient, TimeInterval, Aggregation, QueryServiceAsyncClient, QueryTimeSeriesRequest
+from google.api_core import exceptions
 
 
-async def get_cloud_run_metrics(service_name: str, project_id: str = None) -> dict:
+async def get_cloud_run_metrics(service_name: str, project_id: str = None, end_timestamp: int = None) -> dict:
     """
     Expert Tool: Fetches CPU, Memory, and Requests in parallel.
     Includes robust error handling for API timeouts or permission issues.
+    Optionally accepts an end_timestamp (Unix epoch) to investigate past incidents.
     """
     client = monitoring_v3.MetricServiceAsyncClient()
     project_id = project_id or os.environ.get("PROJECT_ID", None)
@@ -25,7 +26,7 @@ async def get_cloud_run_metrics(service_name: str, project_id: str = None) -> di
 
     project_name = f"projects/{project_id}"
 
-    now = time.time()
+    now = end_timestamp or time.time()
     interval = monitoring_v3.TimeInterval(mapping={
         "end_time": {"seconds": int(now)},
         "start_time": {"seconds": int(now - 300)},
@@ -93,6 +94,7 @@ async def get_cloud_run_metrics(service_name: str, project_id: str = None) -> di
         return {
             "status": "partial_success" if errors and metrics_summary else "success" if not errors else "error",
             "service": service_name,
+            "timestamp_analyzed": now,
             "data": metrics_summary,
             "errors": errors if errors else None
         }
@@ -103,9 +105,11 @@ async def get_cloud_run_metrics(service_name: str, project_id: str = None) -> di
         return {"status": "error", "message": str(e)}
     
 
-async def get_service_latency_report(service_name: str, project_id: str) -> dict:
+async def get_service_latency_report(service_name: str, project_id: str, end_timestamp: int = None) -> dict:
     """
     Fetches p50 and p99 latency for a Cloud Run service in parallel.
+    Also fetches 1-week historical baselines to detect true latency spikes.
+    Optionally accepts an end_timestamp (Unix epoch) to investigate past incidents.
     Uses the native Prometheus HTTP API to bypass MQL parsing errors.
     """
     # 1. Auth: Get Bearer token for the specific project scope
@@ -118,20 +122,29 @@ async def get_service_latency_report(service_name: str, project_id: str) -> dict
     url = f"https://monitoring.googleapis.com/v1/projects/{project_id}/location/global/prometheus/api/v1/query"
     headers = {"Authorization": f"Bearer {credentials.token}"}
 
-    async def fetch(metric_name: str, percentile: float):
+    async def fetch(metric_name: str, percentile: float, offset: str = None):
+        offset_str = f" offset {offset}" if offset else ""
         promql = (
             f"histogram_quantile({percentile}, sum by (le) ("
             f"increase({metric_name}{{"
             f"monitored_resource='cloud_run_revision', "
-            f"service_name='{service_name}'}}[5m])))"
+            f"service_name='{service_name}'}}[10m]{offset_str})))"
         )
+        params = {"query": promql}
+        if end_timestamp:
+            params["time"] = end_timestamp
+            
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.get(url, headers=headers, params={"query": promql})
+                resp = await client.get(url, headers=headers, params=params)
                 resp.raise_for_status()
                 data = resp.json()
                 results = data.get("data", {}).get("result", [])
-                return float(results[0]["value"][1]) if results else 0.0
+                
+                if results:
+                    val = results[0]["value"][1]
+                    return float(val) if val != "NaN" else 0.0
+                return 0.0
             except Exception as e:
                 return f"Error: {str(e)}"
 
@@ -140,6 +153,8 @@ async def get_service_latency_report(service_name: str, project_id: str) -> dict
         fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.50),
         fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.90),
         fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.99),
+        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.50, offset="1w"),
+        fetch("run_googleapis_com:request_latency_e2e_latencies_bucket", 0.99, offset="1w"),
         fetch("run_googleapis_com:request_latency_ingress_to_region_bucket", 0.50),
         fetch("run_googleapis_com:request_latency_pending_bucket", 0.50),
         fetch("run_googleapis_com:request_latency_routing_bucket", 0.50),
@@ -153,13 +168,16 @@ async def get_service_latency_report(service_name: str, project_id: str) -> dict
     return {
         "service": service_name,
         "project": project_id,
+        "timestamp_analyzed": end_timestamp or "now",
         "p50_latency_ms": report_data[0],
         "p95_latency_ms": report_data[1],
         "p99_latency_ms": report_data[2],
-        "ingress_latecny_ms": report_data[3],
-        "pending_latency_ms": report_data[4],
-        "routing_latency_ms": report_data[5],
-        "user_execution_latency_ms": report_data[6],
-        "egress_latency_ms": report_data[7],
-        "unit": "millionseconds"
+        "baseline_1w_p50_latency_ms": report_data[3],
+        "baseline_1w_p99_latency_ms": report_data[4],
+        "ingress_latency_ms": report_data[5],
+        "pending_latency_ms": report_data[6],
+        "routing_latency_ms": report_data[7],
+        "user_execution_latency_ms": report_data[8],
+        "egress_latency_ms": report_data[9],
+        "unit": "milliseconds"
     }
