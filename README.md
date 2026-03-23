@@ -74,6 +74,13 @@ This project uses `uv` for package management and the `google-adk` framework for
 
 To test the agents, ensure your Google Cloud credentials are set up (`gcloud auth application-default login`) and the `PROJECT_ID` environment variable is exported.
 
+### Starting the Agent Interface
+Run the following command to start the interactive web interface for your SRE agents:
+```bash
+uv run adk web main:fleet_coordinator
+```
+This will launch a local web server where you can chat directly with the SRE Coordinator.
+
 ### Example Queries for the LatencyExpert (Interactive Audit)
 - *"Why did the `auth-svc` latency spike in the last 5 minutes?"*
 - *"Can you perform a full technical audit of `gccrfiletransfereuw101`?"*
