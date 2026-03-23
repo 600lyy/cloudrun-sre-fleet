@@ -173,6 +173,13 @@ async def get_service_latency_report(service_name: str, project_id: str, end_tim
         fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_routing_bucket{{{filter_str}}}[5m])))"),
         fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_user_execution_bucket{{{filter_str}}}[5m])))"),
         fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:request_latency_response_egress_bucket{{{filter_str}}}[5m])))"),
+        
+        # Concurrency
+        fetch_promql(f"histogram_quantile(0.50, sum by (le) (increase(run_googleapis_com:container_max_request_concurrencies_bucket{{{filter_str}}}[5m])))"),
+        fetch_promql(f"histogram_quantile(0.95, sum by (le) (increase(run_googleapis_com:container_max_request_concurrencies_bucket{{{filter_str}}}[5m])))"),
+        
+        # Idle Instances
+        fetch_promql(f"sum(avg_over_time(run_googleapis_com:container_instance_count{{{filter_str}, state='idle'}}[5m]))"),
     ]
     
     report_data = await asyncio.gather(*tasks, return_exceptions=True)
@@ -193,5 +200,8 @@ async def get_service_latency_report(service_name: str, project_id: str, end_tim
         "routing_latency_ms": report_data[9],
         "user_execution_latency_ms": report_data[10],
         "egress_latency_ms": report_data[11],
+        "max_concurrency_p50": report_data[12],
+        "max_concurrency_p95": report_data[13],
+        "idle_instances": report_data[14],
         "unit": "milliseconds"
     }
