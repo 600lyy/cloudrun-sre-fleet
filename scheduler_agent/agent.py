@@ -1,6 +1,9 @@
 from google.adk.agents import LlmAgent
+from google.adk.apps import App
+
 from .agents.latency_expert import LatencyExpert
 from .agents.capacity_planner import CapacityPlanner
+from .plugins import TokenUsagePlugin
 
 SERVICE_GROUPS = {
     "tier_1_apis": ["gccrfiletransfereuw101", "gccrpdhproductapifavoriteseuw101", "auth-svc"],
@@ -38,4 +41,10 @@ root_agent = LlmAgent(
         LatencyExpert(),
         CapacityPlanner(),
         ],
+)
+
+fleet_app = App(
+    name="CloudRunSREFleet",
+    root_agent=root_agent,
+    plugins=[TokenUsagePlugin()]
 )
