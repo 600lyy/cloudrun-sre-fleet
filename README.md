@@ -65,10 +65,19 @@ This project uses `uv` for package management and the `google-adk` framework for
    gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/userinfo.email,openid
    ```
 
-4. Export your GCP Project ID:
+4. Configure the Gemini API Key:
+   The project uses the Google AI Studio endpoint. The SDK expects the `GOOGLE_API_KEY` environment variable. If your key is stored as `GEMINI_API_KEY`, you can map it in your terminal:
    ```bash
-   gcloud config set project "your-project-id"
+   export GOOGLE_API_KEY=$GEMINI_API_KEY
    ```
+   *Tip: For convenience, you can add this export line to your shell configuration file (e.g., `~/.zshrc` or `~/.bashrc`) or create a local `.env` file in the project root containing `GOOGLE_API_KEY=your_key_here`.*
+
+5. Set your GCP Target Project ID:
+   ```bash
+   gcloud config set project "your-target-project-id"
+   ```
+
+   *Target project Id is the project in which you will inspect your services. The ADK will still use your HOME project to interact with Gemini.
 
 ## Usage & Testing
 

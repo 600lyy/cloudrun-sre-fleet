@@ -1,4 +1,5 @@
 from google.adk.agents import LlmAgent
+from google.adk.tools import load_memory
 from ._prompts import CAPACITY_PLANNER_SYSTEM_PROMPT
 
 from scheduler_agent.tools.cloud_monitoring import get_cloud_run_metrics, get_service_latency_report
@@ -21,5 +22,6 @@ class CapacityPlanner(LlmAgent):
                 get_cloud_run_metrics,
                 patch_cloud_run_config,
                 get_service_latency_report,
+                load_memory,
             ]
         )
