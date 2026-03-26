@@ -106,13 +106,20 @@ async def get_cloud_run_metrics(service_name: str, project_id: str = None, end_t
         return {"status": "error", "message": str(e)}
     
 
-async def get_service_latency_report(service_name: str, project_id: str, end_timestamp: int = None) -> dict:
+async def get_service_latency_report(service_name: str, project_id: str = None, end_timestamp: int = None) -> dict:
     """
     Fetches p50, p99 latency, and request rates for a Cloud Run service in parallel.
     Also fetches 1-hour rolling historical baselines to detect short-term spikes 
     and correlate them with traffic volume changes.
     Uses the native Prometheus HTTP API to bypass MQL parsing errors.
     """
+    project_id = project_id or os.environ.get("PROJECT_ID", None)
+    if not project_id:
+        return {
+            "status": "error",
+            "message": "CRITICAL: No Project ID provided and Project ID not found in the env. I cannot access Google Cloud monitoring."
+        }
+
     # 1. Auth: Get Bearer token for the specific project scope
     credentials, _ = google.auth.default(
         scopes=['https://www.googleapis.com/auth/cloud-platform']

@@ -1,22 +1,33 @@
 from google.adk.agents import LlmAgent
 from google.adk.apps import App
+from google.genai import types
+from google.adk.models.google_llm import Gemini
 
 from .agents.latency_expert import LatencyExpert
 from .agents.capacity_planner import CapacityPlanner
 from .plugins import TokenUsagePlugin
 
+# Configure a resilient model connection with automatic retries
+resilient_model = Gemini(
+    model="gemini-2.5-flash",
+    retry_options=types.HttpRetryOptions(
+        initial_delay=1.0,
+        attempts=3
+    )
+)
+
 SERVICE_GROUPS = {
-    "tier_1_apis": ["gccrfiletransfereuw101", "gccrpdhproductapifavoriteseuw101", "auth-svc"],
+    "tier_1_apis": ["gccrfiletransfereuw101", "gccrpdhproductapifavoriteseuw101"],
     "internal_batch": ["data-processor", "image-resizer"],
     "legacy_backbone": ["old-db-proxy"]
 }
 
 root_agent = LlmAgent(
     name="SRECoordinator",
-    model="gemini-2.5-flash",
+    model=resilient_model,
     instruction=f"""
     You are the traffic controller for the SRE Fleet. 
-    Refer to the following Subgroup Map to identify service intent:
+...
     {SERVICE_GROUPS}
     
     OPERATIONAL PROTOCOL:

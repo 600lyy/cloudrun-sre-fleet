@@ -3,6 +3,7 @@ import time
 from google.genai import types
 from google.adk.apps import App
 from google.adk.runners import Runner
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
 
 from scheduler_agent.agent import SERVICE_GROUPS
 from scheduler_agent.agents.latency_expert import LatencyExpert
@@ -21,6 +22,7 @@ async def run_watchdog_audit():
 
     runner = Runner(
         app=watchdog_app, 
+        session_service=InMemorySessionService(),
         auto_create_session=True,
     )
     

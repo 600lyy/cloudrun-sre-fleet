@@ -5,6 +5,7 @@ from typing_extensions import override
 from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.models.llm_response import LlmResponse
 from google.adk.agents.callback_context import CallbackContext
+from google.adk.agents.invocation_context import InvocationContext
 
 logger = logging.getLogger("adk_token_usage")
 
@@ -46,7 +47,7 @@ class TokenUsagePlugin(BasePlugin):
     async def after_run_callback(
         self,
         *,
-        callback_context: CallbackContext,
+        invocation_context: InvocationContext,
         **kwargs: Any
     ) -> None:
         """
@@ -54,10 +55,8 @@ class TokenUsagePlugin(BasePlugin):
         Archives the current session into the Memory Service.
         """
         try:
-            # Accessing memory_service via the internal _invocation_context
-            memory_service = callback_context._invocation_context.memory_service
-            if memory_service and callback_context.session:
-                await memory_service.add_session_to_memory(callback_context.session)
-                print(f"[MEMORY] Session '{callback_context.session.id}' archived to long-term memory.", flush=True)
+            if invocation_context.memory_service and invocation_context.session:
+                await invocation_context.memory_service.add_session_to_memory(invocation_context.session)
+                print(f"[MEMORY] Session '{invocation_context.session.id}' archived to long-term memory.", flush=True)
         except Exception as e:
             print(f"\n[MEMORY ARCHIVE ERROR] {str(e)}", flush=True)
