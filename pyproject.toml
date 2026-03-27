@@ -8,4 +8,5 @@ dependencies = [
     "google-adk>=1.27.2",
     "google-cloud-monitoring>=2.29.1",
     "google-cloud-run>=0.15.0",
+    "google-cloud-logging>=3.11.0",
 ]

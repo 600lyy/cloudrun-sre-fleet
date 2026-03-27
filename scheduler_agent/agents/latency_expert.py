@@ -4,6 +4,7 @@ from ._prompts import LATENCY_EXPERT_SYSTEM_PROMPT
 
 from scheduler_agent.tools.cloud_monitoring import get_cloud_run_metrics, get_service_latency_report
 from scheduler_agent.tools.cloud_run import get_cloud_run_config, patch_cloud_run_config
+from scheduler_agent.tools.cloud_logging import get_recent_errors
 
 
 class LatencyExpert(LlmAgent):
@@ -22,6 +23,7 @@ class LatencyExpert(LlmAgent):
                 get_cloud_run_metrics,
                 patch_cloud_run_config,
                 get_service_latency_report,
+                get_recent_errors,
                 load_memory,
             ]
         )
