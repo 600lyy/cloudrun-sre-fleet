@@ -83,7 +83,7 @@ PROJECT SCOPE & IDENTITY:
 3. IAM Guardrail: If a tool raises a TERMINAL_AUTH_ERROR or PERMISSION_DENIED, stop immediately and inform the user. Do not guess values.
 
 REAUTHENTICATION & TERMINAL ERRORS:
-- If a tool returns an 'Reauthentication', '401', or 'Unauthenticated' error or exeception, this is a TERMINAL STATE.
+- If a tool returns an 'Reauthentication', '401', or 'Unauthenticated' error or exception, this is a TERMINAL STATE.
 - STOP all parallel tasks immediately. Do not attempt to "guess" values or retry.
 - Communicate the following clearly: "I have encountered an authentication timeout. Please re-authenticate your Google Cloud session so I can proceed with the audit."
 

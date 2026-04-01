@@ -40,7 +40,7 @@ local-backend:
 # Usage: make deploy [IAP=true] [PORT=8080] - Set IAP=true to enable Identity-Aware Proxy, PORT to specify container port
 deploy:
 	PROJECT_ID=$$(gcloud config get-value project) && \
-	gcloud beta run deploy my-agent \
+	gcloud beta run deploy cloudrun-sre-fleet \
 		--source . \
 		--memory "4Gi" \
 		--project $$PROJECT_ID \
