@@ -37,9 +37,10 @@ local-backend:
 # ==============================================================================
 
 # Deploy the agent remotely
-# Usage: make deploy [IAP=true] [PORT=8080] - Set IAP=true to enable Identity-Aware Proxy, PORT to specify container port
+# Usage: make deploy [IAP=true] [PORT=8080] [SA=your-service-account]
 deploy:
 	PROJECT_ID=$$(gcloud config get-value project) && \
+	SERVICE_ACCOUNT=$(or $(SA),sre-fleet-agent@$$PROJECT_ID.iam.gserviceaccount.com) && \
 	gcloud beta run deploy cloudrun-sre-fleet \
 		--source . \
 		--memory "4Gi" \
@@ -47,6 +48,7 @@ deploy:
 		--region "us-central1" \
 		--no-allow-unauthenticated \
 		--no-cpu-throttling \
+		--service-account $$SERVICE_ACCOUNT \
 		--labels "created-by=adk" \
 		--update-build-env-vars "AGENT_VERSION=$(shell awk -F'"' '/^version = / {print $$2}' pyproject.toml || echo '0.0.0')" \
 		--update-env-vars \
