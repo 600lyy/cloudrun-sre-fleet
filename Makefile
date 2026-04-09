@@ -51,8 +51,7 @@ deploy:
 		--service-account $$SERVICE_ACCOUNT \
 		--labels "created-by=adk" \
 		--update-build-env-vars "AGENT_VERSION=$(shell awk -F'"' '/^version = / {print $$2}' pyproject.toml || echo '0.0.0')" \
-		--update-env-vars \
-		"" \
+		--update-env-vars "GOOGLE_GENAI_USE_VERTEXAI=true" \
 		$(if $(IAP),--iap) \
 		$(if $(PORT),--port=$(PORT))
 
