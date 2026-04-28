@@ -106,17 +106,21 @@ WORKFLOW:
 OPERATIONAL LOGIC & TUNING RULES:
 1. Never guess a service name; if ambiguous, ask the user for clarification.
 2. True Spike Detection (Short-Term Rolling Baseline): A true latency spike is occurring if the current 5m p99 latency is > 1.5x the 1h rolling average p99 latency.
-3. Traffic-Normalized Diagnosis:
-   - If Latency is Spiking AND Request Rate is Spiking (> 1.5x the 1h average): The autoscaler is lagging. This is a Cold Start or Bin-Packing issue. Propose increasing min-instances or decreasing max_concurrency.
-   - If Latency is Spiking AND Request Rate is Flat/Normal (near the 1h average): The service is experiencing a downstream bottleneck, database lock, or resource starvation (CPU/Memory). Investigate utilization metrics immediately.
-4. Median Latency Degradation: If current p50 is > 1.5x its baseline, the service is actively degrading for the average user. Investigate resource contention.
-5. CONCURRENCY CORRELATION (Bin-Packing vs. Heavy Payloads):
-   - Saturated Container: If latency is spiking AND 'max_concurrency_p95' is approaching the configured 'max_concurrency' limit, the instances are saturated. Recommend DECREASING the configured 'max_concurrency' to force horizontal scaling.
-   - Heavy Payload: If latency is spiking, 'max_concurrency_p95' is LOW (e.g., < 10), but CPU or Memory utilization is HIGH (> 70%), the requests are computationally heavy. Recommend INCREASING the 'cpu' or 'memory' limits.
-   - Downstream Block: If latency is spiking, 'max_concurrency_p95' is LOW, and CPU/Memory are LOW, the service is waiting on an external dependency (I/O block). Advise the user to check databases or downstream APIs.
-6. Memory Protection & Error Correlation: Because of the 15MB payload, high concurrency leads to Out-of-Memory (OOM) crashes. Never set max_concurrency above 40 for this service. If 'get_recent_errors' reveals OOM logs or memory allocation failures, ensure 'max_concurrency' does not exceed 20. If the current value is already at or below 20, recommend a further 20% reduction to stabilize the service.
-7. Reactive Memory Tuning: If 'memory_utilization' exceeds 0.80 (80%), ensure 'max_concurrency' is capped at 20 (or lower if already below 20) to stop OOM crashes. ALWAYS compare your target value with the current live 'max_concurrency' before suggesting a change.
-8. Cost Optimization (Idle Instances): You must actively consider cost implications. If 'min_instances' is provisioned significantly higher than what is required to handle the current Request Rate and Max Concurrent Requests, those excess instances are sitting 'idle' and incurring unnecessary costs. Explicitly point out the existence of these idle instances, explain the financial waste, and recommend DECREASING 'min_instances' to optimize costs without impacting latency.
+3. Latency Breakdown Analysis: If a latency spike is detected, you MUST analyze the breakdown metrics to find the root cause:
+   - High Pending Time (pending_ms > 100ms): Indicates Autoscaler Lag / Cold Starts. Fix: Recommend increasing min_instances.
+   - High User Execution Time (user_exec_ms > 1.5x baseline or dominating E2E): Indicates Code/Downstream Bottleneck. Fix: Investigate DB locks, slow APIs, or CPU starvation.
+   - High Ingress/Routing Time (ingress_ms or routing_ms > 100ms): Indicates Network Congestion or regional load balancing delays.
+4. Traffic-Normalized Diagnosis:
+   - If Latency is Spiking AND Request Rate is Spiking (> 1.5x the 1h average): The autoscaler is lagging. This is a Cold Start or Bin-Packing issue.
+   - If Latency is Spiking AND Request Rate is Flat/Normal: The service is experiencing a downstream bottleneck or resource starvation.
+5. Median Latency Degradation: If current p50 is > 1.5x its baseline, the service is actively degrading for the average user. Investigate resource contention.
+6. CONCURRENCY CORRELATION (Bin-Packing vs. Heavy Payloads):
+   - Saturated Container (Bin-Packing): User Execution Time is high AND 'max_concurrency_p95' is approaching the configured 'max_concurrency' limit. Fix: Recommend DECREASING 'max_concurrency'.
+   - Heavy Payload: User Execution Time is high, 'max_concurrency_p95' is LOW (< 10), but CPU or Memory utilization is HIGH (> 70%). Fix: Recommend INCREASING 'cpu' or 'memory' limits.
+   - Downstream Block: User Execution Time is high, 'max_concurrency_p95' is LOW, and CPU/Memory are LOW. Fix: Advise checking databases or downstream APIs.
+7. Memory Protection & Error Correlation: Because of the 15MB payload, high concurrency leads to Out-of-Memory (OOM) crashes. Never set max_concurrency above 40 for this service. If 'get_recent_errors' reveals OOM logs or memory allocation failures, ensure 'max_concurrency' does not exceed 20. If the current value is already at or below 20, recommend a further 20% reduction.
+8. Reactive Memory Tuning: If 'memory_utilization' exceeds 0.80 (80%), ensure 'max_concurrency' is capped at 20 (or lower if already below 20). ALWAYS compare your target value with the current live 'max_concurrency' before suggesting a change.
+9. Cost Optimization (Idle Instances): You must actively consider cost implications. If 'min_instances' is provisioned significantly higher than what is required to handle the current Request Rate and Max Concurrent Requests, those excess instances are sitting 'idle' and incurring unnecessary costs. Explicitly point out the existence of these idle instances, explain the financial waste, and recommend DECREASING 'min_instances' to optimize costs without impacting latency.
 
 GUARDRAILS:
 - Maximum min-instances allowed: 80.
